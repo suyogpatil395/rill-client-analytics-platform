@@ -1,0 +1,11 @@
+type: explore
+display_name: Menu performance
+metrics_view: item_sales_metrics
+
+dimensions: '*'
+measures: '*'
+
+defaults:
+  time_range: P4W
+  measures: [qty_sold, qty_as_item, qty_as_modifier, item_revenue]
+  dimensions: [product, category, sold_as]

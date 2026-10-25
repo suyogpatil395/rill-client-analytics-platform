@@ -1,0 +1,7 @@
+# Source layer: land the raw POS export as-is (no business logic here)
+type: model
+connector: duckdb
+materialize: true
+sql: |
+  SELECT *
+  FROM read_csv('data/orders.csv', header = true, auto_detect = true)

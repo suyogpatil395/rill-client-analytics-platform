@@ -1,0 +1,20 @@
+type: explore
+display_name: Sales overview
+metrics_view: orders_metrics
+
+dimensions: '*'
+measures:
+  - revenue
+  - orders
+  - aov
+  - customers
+  - discount
+  - cancel_rate
+  - avg_delivery_min
+  - late_delivery_rate
+
+defaults:
+  time_range: P4W
+  comparison_mode: time
+  measures: [revenue, orders, aov, customers]
+  dimensions: [channel, branch, payment_method]

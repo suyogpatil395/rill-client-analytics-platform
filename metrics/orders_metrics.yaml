@@ -1,0 +1,79 @@
+# Semantic layer: every KPI is defined ONCE here and reused by dashboards,
+# alerts, exports, APIs and AI agents (via MCP).
+version: 1
+type: metrics_view
+
+display_name: Orders
+description: Bill-level sales KPIs. Grain = one completed or cancelled bill.
+model: orders_enriched
+timeseries: order_ts
+smallest_time_grain: hour
+
+dimensions:
+  - name: restaurant
+    display_name: Restaurant
+    column: restaurant_name
+  - name: branch
+    display_name: Branch
+    column: branch_name
+  - name: city
+    display_name: City
+    column: city
+  - name: channel
+    display_name: Channel
+    column: channel
+  - name: channel_group
+    display_name: Channel group
+    column: channel_group
+  - name: payment_method
+    display_name: Payment method
+    column: payment_method
+  - name: status
+    display_name: Order status
+    column: status
+  - name: order_hour
+    display_name: Hour of day
+    column: order_hour
+
+measures:
+  - name: revenue
+    display_name: Revenue
+    description: Net sales of completed bills (after discount, incl. tax)
+    expression: SUM(CASE WHEN status = 'completed' THEN net_amount ELSE 0 END)
+    format_preset: humanize
+  - name: orders
+    display_name: Orders
+    description: Number of completed bills
+    expression: COUNT(DISTINCT CASE WHEN status = 'completed' THEN order_id END)
+    format_preset: humanize
+  - name: aov
+    display_name: Avg order value
+    description: Revenue / Orders
+    expression: SUM(CASE WHEN status = 'completed' THEN net_amount ELSE 0 END) / NULLIF(COUNT(DISTINCT CASE WHEN status = 'completed' THEN order_id END), 0)
+    format_d3: ",.0f"
+  - name: customers
+    display_name: Unique customers
+    expression: COUNT(DISTINCT customer_id)
+    format_preset: humanize
+  - name: discount
+    display_name: Discount given
+    expression: SUM(CASE WHEN status = 'completed' THEN discount ELSE 0 END)
+    format_preset: humanize
+  - name: cancel_rate
+    display_name: Cancellation rate
+    expression: AVG(CASE WHEN status = 'cancelled' THEN 1.0 ELSE 0 END)
+    format_preset: percentage
+  - name: avg_delivery_min
+    display_name: Avg delivery time (min)
+    expression: AVG(delivery_min)
+    format_d3: ".1f"
+  - name: late_delivery_rate
+    display_name: Late deliveries (>45 min)
+    expression: SUM(is_late_delivery) * 1.0 / NULLIF(COUNT(delivery_min), 0)
+    format_preset: percentage
+
+# Row-level security: each client user only sees their own restaurant.
+# The restaurant_id attribute is set per user in Rill Cloud.
+security:
+  access: true
+  row_filter: "restaurant_id = {{ .user.restaurant_id }}"

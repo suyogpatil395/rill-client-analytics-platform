@@ -1,0 +1,9 @@
+compiler: rillv1
+display_name: Restaurant Client Analytics (demo)
+olap_connector: duckdb
+
+# Default time settings applied to every explore dashboard
+explores:
+  defaults:
+    time_range: P4W
+    comparison_mode: time

@@ -1,0 +1,49 @@
+version: 1
+type: metrics_view
+
+display_name: Item sales
+description: Menu performance. Grain = one line on a bill.
+model: item_sales
+timeseries: order_ts
+
+dimensions:
+  - name: restaurant
+    display_name: Restaurant
+    column: restaurant_name
+  - name: branch
+    display_name: Branch
+    column: branch_name
+  - name: product
+    display_name: Product
+    column: product_name
+  - name: category
+    display_name: Category
+    column: category
+  - name: sold_as
+    display_name: Sold as (item / modifier)
+    column: sold_as
+  - name: channel
+    display_name: Channel
+    column: channel
+
+measures:
+  - name: qty_sold
+    display_name: Quantity sold
+    expression: SUM(CASE WHEN status = 'completed' THEN qty ELSE 0 END)
+    format_preset: humanize
+  - name: qty_as_item
+    display_name: Qty as item
+    expression: SUM(CASE WHEN status = 'completed' AND sold_as = 'As item' THEN qty ELSE 0 END)
+    format_preset: humanize
+  - name: qty_as_modifier
+    display_name: Qty as modifier
+    expression: SUM(CASE WHEN status = 'completed' AND sold_as = 'As modifier' THEN qty ELSE 0 END)
+    format_preset: humanize
+  - name: item_revenue
+    display_name: Item revenue
+    expression: SUM(CASE WHEN status = 'completed' THEN line_total ELSE 0 END)
+    format_preset: humanize
+
+security:
+  access: true
+  row_filter: "restaurant_id = {{ .user.restaurant_id }}"
