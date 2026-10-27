@@ -1,0 +1,7 @@
+# Source layer: monthly revenue target per branch (drives the target alert)
+type: model
+connector: duckdb
+materialize: true
+sql: |
+  SELECT *
+  FROM read_csv('data/branch_targets.csv', header = true, auto_detect = true)

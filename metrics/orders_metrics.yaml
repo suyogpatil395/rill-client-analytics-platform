@@ -72,8 +72,10 @@ measures:
     expression: SUM(is_late_delivery) * 1.0 / NULLIF(COUNT(delivery_min), 0)
     format_preset: percentage
 
-# Row-level security: each client user only sees their own restaurant.
-# The restaurant_id attribute is set per user in Rill Cloud.
+# Row-level security: admins see everything; every other user sees only the
+# restaurants mapped to their email in user_access (sources/raw_user_access.yaml).
 security:
   access: true
-  row_filter: "restaurant_id = {{ .user.restaurant_id }}"
+  row_filter: >
+    {{ .user.admin }} OR
+    restaurant_id IN (SELECT restaurant_id FROM raw_user_access WHERE email = '{{ .user.email }}')

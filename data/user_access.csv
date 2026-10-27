@@ -1,0 +1,4 @@
+email,restaurant_id,role
+owner@tandoortales.example,1,owner
+owner@wokstreet.example,2,owner
+ops@tandoortales.example,1,ops

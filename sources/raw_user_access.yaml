@@ -1,0 +1,7 @@
+# Source layer: who may see which restaurant (drives row-level security)
+type: model
+connector: duckdb
+materialize: true
+sql: |
+  SELECT *
+  FROM read_csv('data/user_access.csv', header = true, auto_detect = true)

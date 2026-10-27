@@ -2,7 +2,7 @@
 
 # 🍽️ Rill Client Analytics Platform
 
-**End-to-end client analytics on Rill + DuckDB: source pipelines → SQL models → a governed semantic layer → self-serve dashboards**
+**Client analytics on Rill + DuckDB: source pipelines → SQL models → metrics views (semantic layer) → explore dashboards, row-level security and alerts**
 
 ![Rill](https://img.shields.io/badge/Rill-BI%20as%20code-4f46e5?style=for-the-badge)
 ![DuckDB](https://img.shields.io/badge/DuckDB-OLAP-FFF000?style=for-the-badge&logo=duckdb&logoColor=black)
@@ -10,109 +10,104 @@
 ![SQL](https://img.shields.io/badge/SQL-Modeling-0d6b5a?style=for-the-badge)
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-AI%20assisted-d97757?style=for-the-badge)
 
-<img src="docs/images/explore-dashboard.png" alt="Sales overview dashboard: KPI trends with period comparison and leaderboards by channel, branch and payment method" width="100%">
+<img src="docs/images/explore-dashboard.gif" alt="Animated explore dashboard: comparison on, click Swiggy to filter, switch to last 7 days, then a client login sees only Wok Street through row-level security" width="100%">
+
+<sub>Rendered from this repo's own sample data and metrics definitions: comparison, leaderboard filter, time range, and row-level security for a client login.</sub>
 
 </div>
 
-> **About this repo.** It recreates the analytics platform I build and run for restaurant clients at work, using a **fully synthetic dataset** (two made-up restaurant brands, 5 branches, ~7.5k bills, Aug–Oct 2026). **No company or client names, data or screenshots are included.** The YAML and SQL follow the same patterns I use in production, so the project runs as-is with `rill start`.
+> **About this repo.** It recreates the client analytics platform I built and ran on Rill at work: the same project structure, modeling patterns, security model, alerts and checks. The data is a **synthetic sample** (two fictional restaurant brands, 5 branches, ~7.5k bills, Aug–Oct 2026), so the project runs as-is with `rill start`. No company or client names or data are included.
 
 ---
 
-## 📌 Table of contents
+## 📌 Contents
 
-1. [What I worked on](#-what-i-worked-on)
-2. [The problem this solves](#-the-problem-this-solves)
-3. [Architecture at a glance](#-architecture-at-a-glance)
-4. [The four layers, explained](#-the-four-layers-explained)
-5. [The semantic layer, with examples](#-the-semantic-layer-with-examples)
-6. [How I deliver a client, step by step](#-how-i-deliver-a-client-step-by-step)
-7. [Data validation with Claude Code](#-data-validation-with-claude-code)
-8. [Real-life use cases](#-real-life-use-cases)
-9. [Glossary](#-glossary)
-10. [Repository structure](#-repository-structure)
-11. [Run it locally](#-run-it-locally)
-12. [Author](#-author)
+| | | | |
+|---|---|---|---|
+| 1 | [What I worked on](#-1-what-i-worked-on) | 8 | [Alerts](#-8-alerts) |
+| 2 | [The problem it solves](#-2-the-problem-it-solves) | 9 | [Data quality checks](#-9-data-quality-checks) |
+| 3 | [Architecture](#%EF%B8%8F-3-architecture) | 10 | [How I delivered each client](#-10-how-i-delivered-each-client) |
+| 4 | [The pipeline, file by file](#-4-the-pipeline-file-by-file) | 11 | [Real-life use cases](#-11-real-life-use-cases) |
+| 5 | [Metrics views: the semantic layer](#-5-metrics-views-the-semantic-layer) | 12 | [Glossary](#-12-glossary) |
+| 6 | [Explore dashboards](#-6-explore-dashboards) | 13 | [Repository structure · run it](#%EF%B8%8F-13-repository-structure) |
+| 7 | [Row-level security](#-7-row-level-security) | 14 | [Author](#-author) |
 
 ---
 
-## 👨‍💻 What I worked on
+## 👨‍💻 1. What I worked on
 
 | | |
 |---|---|
-| 🏢 **Scale** | Owned end-to-end delivery for **50+ restaurant clients**, from the first requirements call to production rollout |
-| 🧱 **Data modeling** | Designed source pipelines and SQL models on **DuckDB** that turn raw POS data (MySQL) into clean, analysis-ready fact tables |
-| 📐 **Semantic layer** | Built **metrics views** that define every KPI once (revenue, orders, AOV, cancellations, delivery time…) so all clients see consistent numbers |
-| 📊 **Dashboards** | Shipped Explore and Pivot dashboards with period comparisons, leaderboards and drill-down, which load in seconds |
-| 🔐 **Security** | Implemented **row-level security** so each client, and each user within a client, sees only their own restaurants |
-| 🔔 **Automation** | Set up alerts on client targets and scheduled exports, replacing manual daily reports |
-| 🤖 **AI-assisted development** | Used **Claude Code** to speed up model and metrics development, run data validation and check report accuracy across client projects |
-| ✅ **Data quality** | Wrote reconciliation and sanity checks so dashboard numbers always match the POS ([see `checks/`](checks)) |
+| 🔁 **Migration** | Moved client reporting to **Rill** on **DuckDB**, with dashboards that load in seconds |
+| 🏢 **Scale** | Owned end-to-end delivery for **50+ restaurant clients**, from requirements to production rollout |
+| 🧱 **Pipelines & models** | Source pipelines from the **POS MySQL** database and SQL models that turn raw data into clean fact tables at a known grain |
+| 📐 **Semantic layer** | **Metrics views** that define every KPI once (net revenue, orders, AOV, cancellations, delivery time, items vs modifiers) |
+| 📊 **Dashboards** | **Explore** dashboards with time comparison, leaderboards and filters, plus **pivot** views for menu analysis |
+| 🔐 **Security** | **Row-level security** so each client, and each user within a client, sees only their own restaurants |
+| 🔔 **Alerts** | Alerts on client **targets** and on **data issues** such as duplicate order IDs, sent to **Slack** or email |
+| ✅ **Data quality** | Reconciliation and sanity checks so dashboard numbers match the POS before every deploy |
+| 🤖 **AI-assisted development** | Used **Claude Code** to speed up model and metrics-view development, data validation and report accuracy checks |
 
 ---
 
-## 🎯 The problem this solves
+## 🎯 2. The problem it solves
 
-Restaurant owners have plenty of data in their POS but very little insight. Before this platform:
-
-- ❌ Every report was **built by hand** (SQL + Excel) for each client, every day
-- ❌ The same KPI was **calculated differently** in different reports, so numbers didn't match
-- ❌ Owners **waited for an analyst** to answer simple questions like “how did Swiggy do last weekend?”
-- ❌ Sharing one database across clients made **data access** risky
-
-After:
-
-- ✅ One **semantic layer** defines each metric once; every dashboard, export and alert uses it
-- ✅ **Self-serve dashboards**: owners filter, compare and drill down on their own
-- ✅ **Sub-second queries** on DuckDB, even across months of bill-level data
-- ✅ **Row-level security** built into the metrics layer, not bolted on per report
-- ✅ Everything is **code** (YAML + SQL) in Git: reviewable, reusable across clients, easy to roll back
+| Before | After |
+|---|---|
+| Reports built by hand (SQL + Excel) for each client | **Self-serve dashboards** on governed metrics |
+| The same KPI calculated differently in different reports | **One definition per KPI** in the metrics view |
+| Owners waited for an analyst for simple questions | Owners **filter, compare and drill** themselves |
+| One shared database made client access risky | **Row-level security** per user, enforced on every query |
+| Data problems found by clients | **Alerts and checks** catch them first |
+| Every client a new build | **Same template**, client-specific config |
 
 ---
 
-## 🏗️ Architecture at a glance
+## 🏗️ 3. Architecture
 
 <img src="docs/images/architecture.png" alt="Five-stage architecture: sources, models, metrics views, dashboards, consumers" width="100%">
 
 ```mermaid
 flowchart LR
-    subgraph S["1 · Sources"]
-        A1[(MySQL POS)]
-        A2[/CSV / Parquet exports/]
+    subgraph S["Sources"]
+        A1[(POS MySQL)]
+        A2[/CSV / Parquet/]
     end
-    subgraph M["2 · Models (SQL on DuckDB)"]
-        B1[stg_orders<br/>clean + de-dup]
-        B2[orders_enriched<br/>bill-level fact]
-        B3[item_sales<br/>line-level fact]
+    subgraph M["Models · DuckDB"]
+        B1[stg_orders]
+        B2[orders_enriched]
+        B3[item_sales]
     end
-    subgraph MV["3 · Metrics views (semantic layer)"]
+    subgraph MV["Metrics views"]
         C1[orders_metrics]
         C2[item_sales_metrics]
     end
-    subgraph D["4 · Dashboards"]
+    subgraph D["Consumers"]
         D1[Sales overview]
         D2[Menu performance]
-        D3[Alerts & exports]
+        D3[Alerts → Slack / email]
     end
     A1 --> B1
     A2 --> B1
     B1 --> B2 --> C1 --> D1
     B1 --> B3 --> C2 --> D2
-    C1 --> D3
-    C1 -. MCP / API .-> E[🤖 AI agents]
-
-    style MV fill:#eef2ff,stroke:#4f46e5
+    B2 --> D3
+    U[(user_access)] -. row_filter .-> C1 & C2
+    style MV fill:#1e1b4b,stroke:#818cf8,color:#fff
 ```
+
+Rill is **BI as code**: every object is a YAML or SQL file in this repo. Rill reads the files, builds the tables in **DuckDB** in dependency order, and serves the dashboards. Changes are reviewed in Git like any other code.
 
 ---
 
-## 🧩 The four layers, explained
+## 🧩 4. The pipeline, file by file
 
-Rill is **“BI as code”**: every object is a YAML or SQL file. Rill reads the files, builds the tables in DuckDB and serves the dashboards. There are four layers, each with one clear job.
+<p align="center">
+  <img src="docs/images/pipeline-flow.svg" width="100%" alt="Animated pipeline: sources (raw_orders, raw_order_items, raw_branches, raw_products, raw_user_access) → models (stg_orders, orders_enriched, item_sales) → metrics views → dashboards → alerts" />
+</p>
 
-### 1️⃣ Sources: land the raw data
-
-**What:** a connection to where the data lives (MySQL, S3/GCS, local files) plus a query that copies it into DuckDB.
-**Rule:** *no business logic here.* Land the data exactly as it is, so you can always trace a number back to the source.
+### Sources: land the raw data
+No business logic here, so any number can be traced back to the source.
 
 ```yaml
 # sources/raw_orders.yaml
@@ -123,13 +118,9 @@ sql: |
   SELECT *
   FROM read_csv('data/orders.csv', header = true, auto_detect = true)
 ```
+<sub>In production this reads from the client's POS MySQL database on a refresh schedule.</sub>
 
-> In production this reads from the client's MySQL POS on a refresh schedule, incrementally where possible.
-
-### 2️⃣ Models: clean, join and shape
-
-**What:** SQL files that transform raw tables into **clean fact tables** at a known **grain**.
-**Why:** dashboards should never deal with duplicates, wrong types or messy text. Fix it once here.
+### Models: clean, de-duplicate, set the grain
 
 ```sql
 -- models/stg_orders.sql (excerpt)
@@ -139,25 +130,28 @@ SELECT
     CASE WHEN channel IN ('Swiggy','Zomato') THEN 'Delivery'
          ELSE 'In-store' END                                   AS channel_group,
     CAST(order_ts AS TIMESTAMP)                                AS order_ts,
-    -- restaurants trade past midnight: a 1 AM bill belongs to yesterday's business day
+    -- a 1 AM bill belongs to yesterday's business day
     CAST(CAST(order_ts AS TIMESTAMP) - INTERVAL 4 HOUR AS DATE) AS business_date,
     net_amount, discount, delivery_min
 FROM raw_orders
-QUALIFY ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY order_ts DESC) = 1  -- de-duplicate
+QUALIFY ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY order_ts DESC) = 1
 ```
 
-| Model | Grain (one row = …) | Purpose |
+| Model | One row = | What it adds |
 |---|---|---|
-| `stg_orders` | one bill | typed, trimmed, de-duplicated, business-day logic |
-| `orders_enriched` | one bill | + branch, city, restaurant, late-delivery flag |
+| `stg_orders` | one bill | types, trimmed text, de-duplication, business date, hour |
+| `orders_enriched` | one bill | branch, city, restaurant, late-delivery flag |
 | `item_sales` | one line on a bill | product, category, **sold as item vs modifier**, line revenue |
 
-> 💡 **Why two fact tables?** Bills and bill lines are one-to-many. If you sum a bill-level amount after joining to its lines, every bill is counted 2–4 times (the **fan-out trap**). Keeping each grain in its own model makes that bug impossible.
+> 💡 **Two fact tables on purpose.** Bills and bill lines are one-to-many. Summing a bill amount after joining to its lines counts each bill 2–4 times (the **fan-out trap**). One model per grain makes that impossible.
 
-### 3️⃣ Metrics views: the semantic layer
+---
 
-**What:** a YAML file that turns a model into **business language**: *measures* (KPIs), *dimensions* (ways to slice), the *time column* and *security rules*.
-**Why:** this is the single source of truth. Dashboards, alerts, exports, APIs and AI agents all ask the metrics view, never the raw table. ([Deep dive below ↓](#-the-semantic-layer-with-examples))
+## 📐 5. Metrics views: the semantic layer
+
+<img src="docs/images/semantic-layer.png" alt="Raw tables → metrics view (business language) → dashboards, pivots, alerts, exports, APIs, AI agents" width="100%">
+
+A **metrics view** turns a model into business language: **measures** (KPIs), **dimensions** (ways to slice), the **time column**, and **security**. Dashboards, alerts, exports and APIs all use it, so *Net revenue* means one thing everywhere.
 
 ```yaml
 # metrics/orders_metrics.yaml (excerpt)
@@ -179,16 +173,26 @@ measures:
     display_name: Avg order value
     expression: SUM(CASE WHEN status = 'completed' THEN net_amount ELSE 0 END)
                 / NULLIF(COUNT(DISTINCT CASE WHEN status = 'completed' THEN order_id END), 0)
-
-security:
-  access: true
-  row_filter: "restaurant_id = {{ .user.restaurant_id }}"   # each client sees only its data
 ```
 
-### 4️⃣ Dashboards: self-serve exploration
+| Measures in this repo | Dimensions |
+|---|---|
+| Revenue · Orders · Avg order value · Unique customers · Discount · Cancellation rate · Avg delivery time · Late deliveries % | Restaurant · Branch · City · Channel · Channel group · Payment method · Status · Hour of day |
+| Qty sold · **Qty as item** · **Qty as modifier** · Item revenue | Product · Category · Sold as · Channel |
 
-**What:** **Explore** dashboards (KPI trends + leaderboards + filters), **Pivot** tables and **Canvas** layouts built on a metrics view.
-**Why:** owners answer their own questions: filter to a branch, compare with last month, drill into a channel, export to Excel.
+**Why this matters:** without it, three analysts write three revenue formulas and get three numbers. Business rules (completed orders only, net of discounts) live **inside** the measure, so no dashboard can forget them.
+
+| Building block | Meaning | Here |
+|---|---|---|
+| **Dimensions** | group / filter by | channel, branch, hour |
+| **Measures** | what you calculate | revenue, AOV, cancel rate |
+| **Time** | time column and grains | `order_ts` → hour / day / week / month |
+| **Relationships** | joins, done in models | bills → branches → restaurants |
+| **Security** | who sees which rows | `row_filter` (section 7) |
+
+---
+
+## 📊 6. Explore dashboards
 
 ```yaml
 # dashboards/orders_explore.yaml
@@ -201,204 +205,201 @@ defaults:
   comparison_mode: time
 ```
 
-<img src="docs/images/menu-pivot.png" alt="Pivot table: quantity sold as item vs as modifier and item revenue by restaurant and category" width="100%">
+What a user can do (shown in the GIF at the top):
 
----
-
-## 📐 The semantic layer, with examples
-
-<img src="docs/images/semantic-layer.png" alt="Raw tables flow into a metrics view, which feeds dashboards, pivots, alerts, exports, APIs and AI agents" width="100%">
-
-### What it is, in one line
-
-> A semantic layer is a **translation layer between raw tables and the people (or tools, or AI) asking questions.** Each business term is defined **once** in SQL; everything else reuses that definition.
-
-🍽️ **Analogy:** it's the **menu** of a restaurant. The kitchen (database) has raw ingredients and recipes. The customer orders “Paneer Tikka” from the menu and gets the same dish every time, without knowing the recipe.
-
-### The problem without it
-
-| Analyst | Their “revenue” formula | Result |
-|---|---|---|
-| A | `SUM(net_amount)` | includes cancelled bills ❌ |
-| B | `SUM(net_amount - discount)` | discount subtracted twice ❌ |
-| C | `SUM(net_amount) WHERE status = 'completed'` | correct ✅ |
-
-Three dashboards, three numbers, and the client stops trusting all of them. **With a metrics view, “Revenue” has exactly one definition.**
-
-### The five building blocks: remember **D-M-T-R-S**
-
-> “**D**on't **M**ake **T**he **R**eports **S**eparately”
-
-| Block | Meaning | Example in this repo |
-|---|---|---|
-| **D**imensions | what you group / filter by | Channel, Branch, City, Payment method, Hour |
-| **M**easures | what you calculate | Revenue, Orders, AOV, Cancellation rate, Late deliveries % |
-| **T**ime | the time column and grains | `order_ts` → hour / day / week / month, with period comparison |
-| **R**elationships | how tables join (done in models) | bills → branches → restaurants; lines → products |
-| **S**ecurity | who sees which rows | `restaurant_id = {{ .user.restaurant_id }}` |
-
-### Example questions → one metrics view
-
-| Business question | Measure × Dimension × Time |
+| Action | What happens |
 |---|---|
-| “Which channel grew most vs last month?” | `revenue` × `channel` × last month vs previous |
-| “Is Zomato delivering late?” | `late_delivery_rate`, `avg_delivery_min` × `channel` |
-| “Which branch has the most cancellations?” | `cancel_rate` × `branch` |
-| “When is the kitchen busiest?” | `orders` × `order_hour` |
-| “Are we giving away too much discount?” | `discount` ÷ `revenue` × `branch` |
-| “How many naans are sold as add-ons?” | `qty_as_modifier` × `product` (item_sales_metrics) |
+| Pick a **time range** (last 7 days, 4 weeks, custom) | every measure and leaderboard re-queries DuckDB |
+| Turn on **comparison** | each number shows its change vs the previous period; charts show the previous period dashed |
+| **Click a leaderboard row** (e.g. Swiggy) | becomes a filter for the whole dashboard |
+| **Pivot** | rows × columns analysis, e.g. category × sold as item / modifier |
+| **Export** | CSV / Excel of what's on screen |
+
+<img src="docs/images/menu-pivot.png" alt="Pivot: quantity sold as item vs as modifier and item revenue by restaurant and category" width="100%">
 
 ---
 
-## 🔁 How I deliver a client, step by step
+## 🔐 7. Row-level security
 
-```mermaid
-flowchart TD
-    R[📋 Requirements call<br/>KPIs, branches, users, targets] --> S[🔌 Connect source<br/>POS MySQL / exports]
-    S --> M[🧱 Build models<br/>clean · join · grain]
-    M --> V[📐 Metrics view<br/>measures · dimensions · RLS]
-    V --> D[📊 Dashboards<br/>Explore · Pivot · defaults]
-    D --> Q{✅ Validation<br/>numbers match POS?}
-    Q -- No --> M
-    Q -- Yes --> U[👥 Users & access<br/>attributes per user]
-    U --> A[🔔 Alerts & scheduled exports]
-    A --> L[🚀 Production rollout<br/>+ client walkthrough]
+<p align="center">
+  <img src="docs/images/rls-flow.svg" width="100%" alt="Each signed-in email is matched to restaurant ids in raw_user_access; the metrics view row_filter returns only those rows, and admins see all" />
+</p>
+
+Access is controlled by a small mapping source, [`data/user_access.csv`](data/user_access.csv), and one `row_filter` on each metrics view:
+
+```yaml
+security:
+  access: true
+  row_filter: >
+    {{ .user.admin }} OR
+    restaurant_id IN (SELECT restaurant_id FROM raw_user_access WHERE email = '{{ .user.email }}')
 ```
 
-| Step | What happens | Output |
-|---|---|---|
-| 1. Requirements | Agree on KPIs, definitions (e.g. *does revenue include tax?*), branches, users, targets | KPI sheet |
-| 2. Source | Connect the client's POS database; land raw tables | `sources/*.yaml` |
-| 3. Models | Clean, de-duplicate, join, apply business-day rules | `models/*.sql` |
-| 4. Metrics view | Define measures, dimensions, time grain and row-level security | `metrics/*.yaml` |
-| 5. Dashboards | Explore / Pivot with sensible defaults (last 4 weeks, compare to previous period) | `dashboards/*.yaml` |
-| 6. Validation | Reconcile dashboard totals with the POS day by day | `checks/*.sql` |
-| 7. Access | Create users with attributes (`restaurant_id`) so RLS applies | user config |
-| 8. Automation | Alerts on targets (e.g. daily revenue below plan), scheduled Excel exports | alerts / reports |
-| 9. Rollout | Walk the client through the dashboards; collect feedback | live project |
+| Signed in as | Sees |
+|---|---|
+| a project / org **admin** | all restaurants |
+| `owner@tandoortales.example` | Tandoor Tales only |
+| `owner@wokstreet.example` | Wok Street only |
 
-Because every client follows the same layered pattern, a new client is mostly **configuration, not new code**. That's how one person can deliver 50+.
+- **Onboarding or offboarding a client user = editing one CSV row.** No dashboard changes.
+- The filter is applied by Rill on **every query** (dashboards, pivots, exports, APIs), so it can't be bypassed from the UI.
+- Fields can also be hidden per user with `include` / `exclude` rules (e.g. cost columns).
+
+📖 [Rill docs: metrics view security](https://docs.rilldata.com/developers/build/metrics-view/security)
 
 ---
 
-## 🤖 Data validation with Claude Code
+## 🔔 8. Alerts
 
-I used **Claude Code** as a pair-programmer across client projects:
+<p align="center">
+  <img src="docs/images/alerts-flow.svg" width="100%" alt="Three alert files: duplicate orders (hourly, Slack), data freshness (every 3 hours, Slack), target achieved (daily, email)" />
+</p>
 
-- ⚡ **Faster development**: drafting SQL models and metrics-view YAML from a requirement description, then reviewing and adjusting
-- 🔍 **Validation**: generating and running reconciliation queries (dashboard vs source, per day / branch / channel) and explaining mismatches
-- 🧪 **Report accuracy checks**: spotting fan-out joins, missing status filters, time-zone and business-day errors before clients do
-- 📝 **Documentation**: keeping metric definitions and change notes up to date
+A Rill alert is a YAML file with a **cron schedule**, a **query**, and **where to notify**. It fires when the query **returns rows**.
 
-The checks in this repo are the kind I run before every rollout:
+```yaml
+# alerts/duplicate_orders.yaml
+type: alert
+display_name: Duplicate order IDs detected
+refresh:
+  cron: "0 * * * *"
+data:
+  sql: |
+    SELECT order_id, branch_id, CAST(order_ts AS DATE) AS order_date, COUNT(*) AS copies
+    FROM raw_orders
+    WHERE order_id IS NOT NULL
+    GROUP BY order_id, branch_id, CAST(order_ts AS DATE)
+    HAVING COUNT(*) > 1
+notify:
+  slack:
+    channels:
+      - '#data-alerts'
+```
 
-| Check | What it catches | Expected |
+| Alert | Checks | Notifies |
 |---|---|---|
-| [`01_duplicate_orders.sql`](checks/01_duplicate_orders.sql) | the same bill counted twice | 0 rows |
-| [`02_revenue_reconciliation.sql`](checks/02_revenue_reconciliation.sql) | dashboard revenue ≠ source revenue on any day | 0 rows |
-| [`03_orphan_keys.sql`](checks/03_orphan_keys.sql) | bills without a branch, lines without a product | all 0 |
-| [`04_freshness_and_sanity.sql`](checks/04_freshness_and_sanity.sql) | stale data, negative bills, impossible delivery times | latest = today, rest 0 |
+| [`duplicate_orders.yaml`](alerts/duplicate_orders.yaml) | the same order landing twice from the POS | Slack |
+| [`data_freshness.yaml`](alerts/data_freshness.yaml) | no new orders for over a day (pipeline stopped) | Slack |
+| [`target_achieved.yaml`](alerts/target_achieved.yaml) | a branch crossed its monthly target ([`branch_targets.csv`](data/branch_targets.csv)) | owner by email |
+
+📖 [Rill docs: alerts](https://docs.rilldata.com/reference/project-files/alerts)
 
 ---
 
-## 🌍 Real-life use cases
+## ✅ 9. Data quality checks
 
-| Who | Question | Where they find it |
-|---|---|---|
-| 👨‍🍳 **Restaurant owner** | “How did we do this week vs last week?” | Sales overview → Revenue, Orders, AOV with comparison |
-| 🏪 **Branch manager** | “Why is my branch below target?” | Filter Branch → Channel leaderboard → drill into hour of day |
-| 🛵 **Delivery / ops lead** | “Are aggregator orders late? Which one is worse?” | `avg_delivery_min`, `late_delivery_rate` by channel |
-| 📋 **Menu team** | “Which dishes sell, and which are only add-ons?” | Menu performance → Pivot: qty as item vs as modifier |
-| 💸 **Finance** | “Where are discounts eating margin?” | `discount` by branch and channel; scheduled Excel export |
-| 🧑‍🍳 **Kitchen planning** | “When should we add staff?” | Orders by hour of day × weekday |
-| 🚨 **Everyone** | “Tell me when something is wrong” | Alerts: daily revenue below target, cancellation spike |
+<p align="center">
+  <img src="docs/images/checks-terminal.svg" width="85%" alt="Terminal running the four checks: duplicates 0 rows, reconciliation 0 rows, orphan keys all 0, freshness ok" />
+</p>
+
+Run before every deploy. Expected result: **0 rows** (or all zeros). The outputs shown are the real results on this repo's sample data.
+
+| Check | Catches |
+|---|---|
+| [`01_duplicate_orders.sql`](checks/01_duplicate_orders.sql) | the same bill counted twice |
+| [`02_revenue_reconciliation.sql`](checks/02_revenue_reconciliation.sql) | dashboard revenue ≠ source revenue on any day |
+| [`03_orphan_keys.sql`](checks/03_orphan_keys.sql) | bills without a branch, lines without a product or bill |
+| [`04_freshness_and_sanity.sql`](checks/04_freshness_and_sanity.sql) | stale data, negative bills, impossible delivery times, future dates |
+
+**Claude Code in this workflow:** drafting model and metrics-view YAML from a requirement, generating reconciliation queries per client, and explaining mismatches (fan-out joins, missing status filters, time-zone and business-day errors) before clients saw them.
 
 ---
 
-## 📖 Glossary
+## 🔁 10. How I delivered each client
+
+<p align="center">
+  <img src="docs/images/delivery-flow.svg" width="100%" alt="8 steps: requirements, connect, model, metrics view, dashboards, validate, alerts, rollout" />
+</p>
+
+| Step | Output in this repo |
+|---|---|
+| 1 · Requirements: KPIs, definitions (*does revenue include tax?*), branches, users, targets | KPI sheet |
+| 2 · Connect the POS MySQL database | `sources/*.yaml` |
+| 3 · Model: clean, de-duplicate, business-day rule | `models/*.sql` |
+| 4 · Metrics view: measures, dimensions, security | `metrics/*.yaml` |
+| 5 · Dashboards with sensible defaults (last 4 weeks, comparison on) | `dashboards/*.yaml` |
+| 6 · Validate against the POS | `checks/*.sql` |
+| 7 · Alerts: duplicates, freshness, targets | `alerts/*.yaml` |
+| 8 · Map users, walkthrough, rollout | `data/user_access.csv` |
+
+Every client used the **same layered template**, so a new client was mostly **configuration, not new code**. That's how 50+ clients stayed maintainable.
+
+---
+
+## 🌍 11. Real-life use cases
+
+| Who | Question | Where |
+|---|---|---|
+| 👨‍🍳 Owner | "This week vs last week?" | Sales overview, comparison on |
+| 🏪 Branch manager | "Why is my branch below target?" | filter branch → channel leaderboard → hour of day |
+| 🛵 Delivery lead | "Are aggregator orders late?" | avg delivery time, late deliveries % by channel |
+| 📋 Menu team | "What sells as an item vs as an add-on?" | Menu performance pivot |
+| 💸 Finance | "Where are discounts eating margin?" | discount by branch and channel, export |
+| 🧾 Data team | "Did anything break overnight?" | duplicate and freshness alerts in Slack |
+| 🎯 Owner | "Tell me when we hit the target" | target-achieved email |
+
+---
+
+## 📖 12. Glossary
 
 | Term | Meaning |
 |---|---|
-| **Rill** | Open-source “BI as code” tool: define sources, models, metrics and dashboards in YAML/SQL; it runs them on DuckDB |
-| **DuckDB** | An in-process **OLAP** database: columnar and vectorised, very fast for aggregations on millions of rows |
-| **OLTP vs OLAP** | OLTP (the POS MySQL) handles many small writes; OLAP (DuckDB) handles big analytical reads |
-| **Source** | Where raw data comes from, landed as-is |
-| **Model** | A SQL transformation that produces a clean table |
-| **Grain** | What one row represents (one bill, one bill line). Always define it |
-| **Fact / dimension** | Facts are events with numbers (bills); dimensions describe them (branch, product) |
-| **Materialize** | Store a model's result as a table instead of recomputing it on every query |
-| **Metrics view** | Rill's semantic layer: measures + dimensions + time + security on top of a model |
-| **Measure** | An aggregate KPI expression, e.g. `SUM(net_amount)` |
-| **Dimension** | A column to group or filter by, e.g. channel |
-| **Explore dashboard** | Rill's interactive dashboard: KPI trends, comparisons, leaderboards, filters |
-| **Row-level security (RLS)** | A filter applied automatically per user so they only see permitted rows |
-| **Business date** | The trading day a bill belongs to (late-night bills roll back to the previous day) |
-| **MCP** | Model Context Protocol, which lets AI agents query metrics views safely through the semantic layer |
+| **Rill** | open-source BI-as-code tool: sources, models, metrics views, dashboards and alerts as YAML/SQL, served on DuckDB |
+| **DuckDB** | in-process columnar **OLAP** database, fast for aggregations on millions of rows |
+| **OLTP vs OLAP** | the POS MySQL handles many small writes; DuckDB handles big analytical reads |
+| **Source** | raw data landed as-is |
+| **Model** | SQL that produces a clean table; **materialize** stores the result |
+| **Grain** | what one row represents (one bill, one bill line) |
+| **Metrics view** | Rill's semantic layer: measures + dimensions + time + security |
+| **Explore dashboard** | interactive dashboard with time comparison, leaderboards and filters |
+| **Row filter** | SQL condition Rill adds to every query for the signed-in user |
+| **Alert** | scheduled query that notifies when it returns rows |
+| **Business date** | the trading day a bill belongs to (late-night bills roll back) |
 
 ---
 
-## 🗂️ Repository structure
+## 🗂️ 13. Repository structure
 
 ```text
 rill-client-analytics-platform/
 ├── rill.yaml                     # project config (DuckDB, dashboard defaults)
-├── data/                         # synthetic POS export (CSV)
-│   ├── orders.csv                # one row per bill
-│   ├── order_items.csv           # one row per bill line
-│   ├── branches.csv
-│   └── products.csv
-├── sources/                      # 1 · land raw data
-│   ├── raw_orders.yaml
-│   ├── raw_order_items.yaml
-│   ├── raw_branches.yaml
-│   └── raw_products.yaml
-├── models/                       # 2 · clean, join, shape
-│   ├── stg_orders.sql
-│   ├── orders_enriched.sql
-│   └── item_sales.sql
-├── metrics/                      # 3 · semantic layer
-│   ├── orders_metrics.yaml
-│   └── item_sales_metrics.yaml
-├── dashboards/                   # 4 · self-serve dashboards
-│   ├── orders_explore.yaml
-│   └── menu_explore.yaml
-├── checks/                       # data-quality & reconciliation SQL
-└── docs/images/                  # diagrams and illustrative screenshots
+├── data/                         # synthetic sample data
+│   ├── orders.csv · order_items.csv · branches.csv · products.csv
+│   ├── user_access.csv           # email → restaurant (row-level security)
+│   └── branch_targets.csv        # monthly targets (target alert)
+├── sources/                      # land raw data (one file per table)
+├── models/                       # stg_orders · orders_enriched · item_sales
+├── metrics/                      # orders_metrics · item_sales_metrics (+ security)
+├── dashboards/                   # orders_explore · menu_explore
+├── alerts/                       # duplicate_orders · data_freshness · target_achieved
+├── checks/                       # pre-deploy data-quality SQL
+└── docs/images/                  # GIF + animated diagrams
 ```
 
----
-
-## ▶️ Run it locally
+### ▶️ Run it locally
 
 ```bash
-# 1. Install Rill (macOS / Linux)
-curl https://rill.sh | sh
-
-# 2. Clone and start
+curl https://rill.sh | sh                     # install Rill (macOS / Linux)
 git clone https://github.com/suyogpatil395/rill-client-analytics-platform.git
 cd rill-client-analytics-platform
-rill start
+rill start                                    # opens http://localhost:9009
 ```
 
-Rill opens at `http://localhost:9009`. Open **Sales overview** or **Menu performance**.
+Locally you're an admin, so you see all data. Deploy to Rill Cloud (`rill deploy`) and add users to see row-level security and alerts in action.
 
-> Row-level security uses a `restaurant_id` user attribute. Locally you're an admin, so you see all data. In Rill Cloud, set the attribute per user to restrict access.
+**Sample data:** ~7,475 bills and ~19,000 bill lines for two fictional brands (*Tandoor Tales*, *Wok Street*) across 5 branches in Pune and Mumbai, 1 Aug – 24 Oct 2026: dine-in, takeaway, Swiggy and Zomato orders, cancellations, discounts and delivery times.
 
-**Dataset:** ~7,475 bills and ~19,000 bill lines for two fictional brands (*Tandoor Tales*, *Wok Street*) across 5 branches in Pune and Mumbai, 1 Aug – 24 Oct 2026, including dine-in, takeaway, Swiggy and Zomato orders, cancellations, discounts and delivery times.
+### 🛠️ Tech stack
+
+`MySQL (POS)` · `DuckDB` · `SQL (CTEs, window functions, QUALIFY)` · `Rill: metrics views, explore, pivot, alerts, security` · `Slack / email alerts` · `Claude Code` · `Git`
 
 ---
 
-## 🛠️ Tech stack
+## 🔗 Related
 
-| Layer | Tools |
-|---|---|
-| Source | MySQL (POS), CSV / Parquet |
-| Engine | DuckDB |
-| Modeling | SQL (CTEs, window functions, QUALIFY) |
-| Semantic layer & BI | Rill: metrics views, Explore, Pivot, alerts |
-| Security | Row-level security with user attributes |
-| AI-assisted development | Claude Code |
-| Version control | Git / GitHub |
+- [Sigma Computing Analytics Platform](https://github.com/suyogpatil395/sigma-computing-analytics-platform): the Sigma side of the same client work
+- [Analytics Studio](https://github.com/suyogpatil395/analytics-studio): AI report builder on a semantic layer
+- [Agentic Analytics Skills](https://github.com/suyogpatil395/agentic-analytics-skills): MCP + skills on governed metrics
 
 ---
 

@@ -1,0 +1,14 @@
+# Freshness alert: no new orders for more than a day means the source pipeline stopped.
+type: alert
+display_name: Orders data is stale
+refresh:
+  cron: "0 */3 * * *"        # every 3 hours
+data:
+  sql: |
+    SELECT max_ts
+    FROM (SELECT MAX(CAST(order_ts AS TIMESTAMP)) AS max_ts FROM raw_orders)
+    WHERE max_ts < NOW() - INTERVAL 1 DAY
+notify:
+  slack:
+    channels:
+      - '#data-alerts'

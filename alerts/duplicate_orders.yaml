@@ -1,0 +1,17 @@
+# Data-quality alert: the same order landing twice (e.g. a double insert from the POS).
+# Fires when the query returns rows.
+type: alert
+display_name: Duplicate order IDs detected
+refresh:
+  cron: "0 * * * *"          # every hour
+data:
+  sql: |
+    SELECT order_id, branch_id, CAST(order_ts AS DATE) AS order_date, COUNT(*) AS copies
+    FROM raw_orders
+    WHERE order_id IS NOT NULL
+    GROUP BY order_id, branch_id, CAST(order_ts AS DATE)
+    HAVING COUNT(*) > 1
+notify:
+  slack:
+    channels:
+      - '#data-alerts'

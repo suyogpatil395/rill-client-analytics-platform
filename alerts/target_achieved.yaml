@@ -1,0 +1,20 @@
+# Client alert: tell the owner the day a branch crosses its monthly revenue target.
+type: alert
+display_name: Branch crossed its monthly revenue target
+refresh:
+  cron: "0 9 * * *"          # every morning
+data:
+  sql: |
+    SELECT o.branch_name, t.monthly_target, SUM(o.net_amount) AS mtd_revenue
+    FROM orders_enriched o
+    JOIN raw_branch_targets t
+      ON t.branch_id = o.branch_id
+     AND t.month = DATE_TRUNC('month', CURRENT_DATE)
+    WHERE o.status = 'completed'
+      AND o.order_ts >= DATE_TRUNC('month', CURRENT_DATE)
+    GROUP BY o.branch_name, t.monthly_target
+    HAVING SUM(o.net_amount) >= t.monthly_target
+notify:
+  email:
+    recipients:
+      - owner@tandoortales.example
